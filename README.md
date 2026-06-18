@@ -38,30 +38,25 @@ The goal is simple:
 
 ```mermaid
 flowchart TD
+    A[Yahoo Finance] --> D[Data Ingestion Layer]
+    B[Financial News APIs] --> D
+    C[Market Sentiment Sources] --> D
 
-A[Yahoo Finance]
-B[Financial News APIs]
-C[Market Sentiment Sources]
+    D --> E[(PostgreSQL)]
 
-A --> D[Data Ingestion Layer]
-B --> D
-C --> D
+    E --> F[Feature Engineering]
 
-D --> E[(PostgreSQL)]
+    F --> G[FinBERT Sentiment Model]
 
-E --> F[Feature Engineering]
+    G --> H[XGBoost Signal Engine]
 
-F --> G[FinBERT Sentiment Model]
+    H --> I[LSTM Forecasting]
 
-G --> H[XGBoost Signal Engine]
+    I --> J[FastAPI Backend]
 
-H --> I[LSTM Forecasting]
+    J --> K[Dashboard]
 
-I --> J[FastAPI Backend]
-
-J --> K[Dashboard]
-
-J --> L[Alerts & Automation]
+    J --> L[Alerts & Automation]
 ```
 
 ---
