@@ -107,5 +107,5 @@ if __name__ == "__main__":
     # This block only runs when you execute this file directly
     # e.g. python -m backend.ingestion.price_fetcher
     # It does NOT run when the file is imported by another module
-    fetch_and_save("AAPL", period="1mo", interval="1d")
-    fetch_and_save("BTC-USD", period="1mo", interval="1d")
+    fetch_and_save("AAPL", period="2y", interval="1d")
+    fetch_and_save("BTC-USD", period="2y", interval="1d")
