@@ -9,57 +9,73 @@ from backend.db.models import NewsArticle
 
 load_dotenv()
 
-GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
-GNEWS_BASE_URL = "https://gnews.io/api/v4/search"
+ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY")
+AV_BASE_URL = "https://www.alphavantage.co/query"
 
-# Map our symbols to search terms GNews understands
-SYMBOL_QUERIES = {
-    "AAPL": "Apple stock",
-    "BTC-USD": "Bitcoin crypto",
-}
+SYMBOLS = ["AAPL", "BTC-USD"]
 
 
-def fetch_gnews(symbol: str, max_articles: int = 10) -> list[dict]:
+def fetch_av_news(symbol: str, limit: int = 10) -> list[dict]:
     """
-    Fetches news articles from GNews API for a given symbol.
-    Returns a list of article dicts.
+    Fetches real US market news from Alpha Vantage News Sentiment API.
+    Returns structured articles with real sentiment scores.
+    
+    Alpha Vantage returns news specific to the ticker with
+    their own sentiment scores — we store both their score
+    and let FinBERT rescore later for comparison.
     """
-    query = SYMBOL_QUERIES.get(symbol, symbol)
+    # Alpha Vantage uses 'CRYPTO:BTC' format for crypto
+    ticker = "CRYPTO:BTC" if symbol == "BTC-USD" else symbol
 
     params = {
-        "q": query,
-        "lang": "en",
-        "max": max_articles,
-        "apikey": GNEWS_API_KEY,
+        "function": "NEWS_SENTIMENT",
+        "tickers": ticker,
+        "limit": limit,
+        "apikey": ALPHA_VANTAGE_KEY,
     }
 
     try:
-        response = requests.get(GNEWS_BASE_URL, params=params, timeout=10)
+        response = requests.get(AV_BASE_URL, params=params, timeout=15)
         response.raise_for_status()
+        data = response.json()
     except requests.exceptions.RequestException as e:
-        print(f"Failed to fetch news for {symbol}: {e}")
+        print(f"Failed to fetch Alpha Vantage news for {symbol}: {e}")
         return []
 
-    data = response.json()
-    articles = []
+    # Alpha Vantage returns error messages as JSON keys
+    if "Information" in data or "Note" in data:
+        msg = data.get("Information") or data.get("Note")
+        print(f"Alpha Vantage limit hit for {symbol}: {msg}")
+        return []
 
-    for item in data.get("articles", []):
+    articles = []
+    feed = data.get("feed", [])
+
+    for item in feed:
         try:
+            # Parse Alpha Vantage date format: 20240613T143000
             published_at = datetime.strptime(
-                item["publishedAt"], "%Y-%m-%dT%H:%M:%SZ"
+                item["time_published"], "%Y%m%dT%H%M%S"
             )
         except (ValueError, KeyError):
             published_at = datetime.now()
+
+        # Alpha Vantage provides overall sentiment score per article
+        # Range: -1.0 (bearish) to +1.0 (bullish)
+        av_score = float(item.get("overall_sentiment_score", 0.0))
 
         articles.append({
             "symbol": symbol,
             "headline": item.get("title", "").strip(),
             "url": item.get("url", "").strip(),
-            "source": item.get("source", {}).get("name", "GNews"),
+            "source": item.get("source", "Alpha Vantage"),
             "published_at": published_at,
+            # Use Alpha Vantage score directly — FinBERT will
+            # rescore when score_unscored_articles() runs
+            "sentiment_score": av_score,
         })
 
-    print(f"Found {len(articles)} articles for {symbol}")
+    print(f"Found {len(articles)} articles for {symbol} from Alpha Vantage")
     return articles
 
 
@@ -92,6 +108,7 @@ def save_news(articles: list[dict]) -> int:
                 url=article["url"],
                 source=article["source"],
                 published_at=article["published_at"],
+                sentiment_score=article["sentiment_score"],
             )
 
             db.add(news)
@@ -111,10 +128,10 @@ def save_news(articles: list[dict]) -> int:
 
 
 def scrape_and_save(symbol: str) -> int:
-    articles = fetch_gnews(symbol)
+    articles = fetch_av_news(symbol)
     return save_news(articles)
 
 
 if __name__ == "__main__":
-    scrape_and_save("AAPL")
-    scrape_and_save("BTC-USD")
+    for symbol in SYMBOLS:
+        scrape_and_save(symbol)
